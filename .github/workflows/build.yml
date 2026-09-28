@@ -24,9 +24,9 @@ jobs:
         shell: pwsh
         run: |
           $d = Get-Content deps.json -Raw | ConvertFrom-Json
-          "node=$($d.node)" >> $env:GITHUB_OUTPUT
+          "node=$($d.node)"       >> $env:GITHUB_OUTPUT
           "dsh=$($d.dsh.version)" >> $env:GITHUB_OUTPUT
-          "pnpm=$($d.pnpm)" >> $env:GITHUB_OUTPUT
+          "pnpm=$($d.pnpm)"       >> $env:GITHUB_OUTPUT
 
       - uses: actions/setup-node@v4
         with:
@@ -55,16 +55,29 @@ jobs:
           }
           Write-Host "OK - all 3 plugins composed"
 
-      - name: Build the portable folder + zip
+      # ---------- build ----------
+      - name: Build the portable folder
         shell: pwsh
-        run: ./build-package.ps1 -Src ./staging -Out ./out
+        run: ./build-package.ps1 -Src ./staging -Out ./out -NoZip
 
-      - name: SHA256 checksums
+      - name: Verify the built package (integrity gates)
+        shell: pwsh
+        run: ./tools/verify-package.ps1 -Pkg ./out/DSH-Portable
+
+      # ---------- archive: MUST happen before anything runs the package ----------
+      # Running dsh self-heals data\.dsh\profiles\node_modules into symlinks and
+      # tar follows them (the zip would jump ~145MB -> ~290MB). The build script
+      # also strips them right before zipping; this ordering is the second guard.
+      - name: Zip + SHA256
         shell: pwsh
         run: |
+          $tar = Join-Path $env:SystemRoot 'System32\tar.exe'
+          & $tar -a -c -f ./out/DSH-Portable.zip -C ./out DSH-Portable
+          if ($LASTEXITCODE -ne 0) { throw "tar failed ($LASTEXITCODE)" }
           $h = Get-FileHash ./out/DSH-Portable.zip -Algorithm SHA256
           "$($h.Hash.ToLower())  DSH-Portable.zip" | Set-Content ./out/SHA256SUMS.txt -Encoding ASCII
           Get-Content ./out/SHA256SUMS.txt
+          Write-Host ("zip: {0:N1} MB" -f ((Get-Item ./out/DSH-Portable.zip).Length / 1MB))
 
       - uses: actions/upload-artifact@v4
         with:
@@ -74,6 +87,19 @@ jobs:
             out/SHA256SUMS.txt
           retention-days: 14
 
+      # ---------- end-to-end: really run the package on a clean machine ----------
+      # The script injects a fake sk- key itself, so no secret is needed.
+      # It starts/stops the Web server (-Port 3099) and exits 1 on any change
+      # outside the bundle. It runs AFTER the zip on purpose.
+      - name: End-to-end isolation test (runs the package for real)
+        shell: pwsh
+        run: |
+          $pkg = Resolve-Path ./out/DSH-Portable
+          & (Join-Path $pkg 'tools\verify-isolation.ps1') -Rounds 2 -Port 3099
+          if ($LASTEXITCODE -ne 0) { throw "isolation verification FAILED (exit $LASTEXITCODE)" }
+          Write-Host "isolation verification PASSED"
+
+      # ---------- release ----------
       - name: Create DRAFT release (tags only)
         if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
