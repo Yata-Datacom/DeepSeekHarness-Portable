@@ -17,7 +17,7 @@ jobs:
   portable:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Read deps.json
         id: deps
@@ -28,19 +28,50 @@ jobs:
           "dsh=$($d.dsh.version)" >> $env:GITHUB_OUTPUT
           "pnpm=$($d.pnpm)"       >> $env:GITHUB_OUTPUT
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "${{ steps.deps.outputs.node }}"
 
+      # The bundle ships node\ with the global dsh install inside it (that is how
+      # the local layout works: npm's prefix == the node dir). A plain
+      # `npm config set prefix` proved unreliable on the runner, so set the env
+      # var (which beats any .npmrc), verify, and graft the tree in as a fallback.
       - name: Install dsh into the Node dir (mirrors the local layout)
         shell: pwsh
         run: |
+          $ver     = "${{ steps.deps.outputs.dsh }}"
           $nodeDir = Split-Path (Get-Command node).Source -Parent
-          npm config set prefix $nodeDir
-          npm install -g "@deepseek-ai/dsh@${{ steps.deps.outputs.dsh }}"
-          if (-not (Test-Path "$nodeDir\node_modules\@deepseek-ai\dsh\package.json")) {
-            throw "dsh did not land in the Node dir"
+          $env:NPM_CONFIG_PREFIX = $nodeDir
+          Write-Host "nodeDir : $nodeDir"
+          Write-Host "prefix  : $(npm config get prefix)"
+          Write-Host "root -g : $(npm root -g)"
+          npm install -g "@deepseek-ai/dsh@$ver"
+
+          $probe = Join-Path $nodeDir 'node_modules\@deepseek-ai\dsh\package.json'
+          if (-not (Test-Path -LiteralPath $probe)) {
+            Write-Host "--- dsh is not in the Node dir; diagnosing ---"
+            Write-Host "prefix  : $(npm config get prefix)"
+            Write-Host "root -g : $(npm root -g)"
+            Get-ChildItem -LiteralPath $nodeDir -ErrorAction SilentlyContinue |
+              Select-Object -First 25 -ExpandProperty Name | Write-Host
+            Write-Host "--- fallback: install to a temp dir and graft the tree in ---"
+            $tmp = Join-Path $env:RUNNER_TEMP 'dshgraft'
+            npm install --prefix $tmp --no-save "@deepseek-ai/dsh@$ver"
+            $graft = Join-Path $tmp 'node_modules'
+            if (-not (Test-Path -LiteralPath (Join-Path $graft '@deepseek-ai\dsh\package.json'))) {
+              throw "graft install failed too"
+            }
+            $target = Join-Path $nodeDir 'node_modules'
+            New-Item -ItemType Directory -Path $target -Force | Out-Null
+            robocopy $graft $target /E /NFL /NDL /NJH /NJS /NP | Out-Null
+            # the shims must sit next to node.exe so bare `dsh` resolves on PATH
+            foreach ($b in @('dsh', 'dsh.cmd', 'dsh.ps1')) {
+              $s = Join-Path $tmp "node_modules\.bin\$b"
+              if (Test-Path -LiteralPath $s) { Copy-Item -LiteralPath $s -Destination $nodeDir -Force }
+            }
           }
+          if (-not (Test-Path -LiteralPath $probe)) { throw "dsh still missing at $probe" }
+          Write-Host ("OK dsh {0} is in the Node dir" -f (Get-Content -LiteralPath $probe -Raw | ConvertFrom-Json).version)
 
       - name: Prepare profile + staging layout
         shell: pwsh
