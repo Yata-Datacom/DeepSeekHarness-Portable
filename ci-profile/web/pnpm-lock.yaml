@@ -1,0 +1,41 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: false
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      dsh-whale-galgame:
+        specifier: ^0.4.1
+        version: 0.4.1
+      dsh-whale-widget:
+        specifier: github:MeteorNOX/DeepSeek-Balance-Whale-Widget
+        version: https://codeload.github.com/MeteorNOX/DeepSeek-Balance-Whale-Widget/tar.gz/54654549450431a3bfca9986958fcae23826bba8
+      open-sea-skin:
+        specifier: 1.2.3
+        version: 1.2.3
+
+packages:
+
+  dsh-whale-galgame@0.4.1:
+    resolution: {integrity: sha512-gu/Kc9rzhL9IxuxJV52je/4q+9KHXjWbWU5yVmjkboEebqFJDFwp8VU/jUmi47S8kOqjnbl/OPPgkcFuZlEqIg==}
+    engines: {node: ^22.19.0 || >=24.0.0}
+
+  dsh-whale-widget@https://codeload.github.com/MeteorNOX/DeepSeek-Balance-Whale-Widget/tar.gz/54654549450431a3bfca9986958fcae23826bba8:
+    resolution: {gitHosted: true, integrity: sha512-2ZyC0eTQNyo8xBJzIYH7pGPIk+oFBqggFCgpG0KNXvjDbaxsq2442J/XDkYWfJiPeoC8YMAt/M4LCo9uGrd9wQ==, tarball: https://codeload.github.com/MeteorNOX/DeepSeek-Balance-Whale-Widget/tar.gz/54654549450431a3bfca9986958fcae23826bba8}
+    version: 0.3.11
+
+  open-sea-skin@1.2.3:
+    resolution: {integrity: sha512-KDeeNL9CXq9y/tKq3PgoQkYdib336FfnvOJcsLt8I/eQjvj66ihgk5AuyU5yhGnnhlZKPPetz8yrOx2AaDZaeA==}
+    engines: {node: '>=20'}
+
+snapshots:
+
+  dsh-whale-galgame@0.4.1: {}
+
+  dsh-whale-widget@https://codeload.github.com/MeteorNOX/DeepSeek-Balance-Whale-Widget/tar.gz/54654549450431a3bfca9986958fcae23826bba8: {}
+
+  open-sea-skin@1.2.3: {}

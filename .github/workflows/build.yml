@@ -1,0 +1,85 @@
+name: build-portable
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Create a DRAFT release (publish manually afterwards)"
+        type: boolean
+        default: false
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  portable:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read deps.json
+        id: deps
+        shell: pwsh
+        run: |
+          $d = Get-Content deps.json -Raw | ConvertFrom-Json
+          "node=$($d.node)" >> $env:GITHUB_OUTPUT
+          "dsh=$($d.dsh.version)" >> $env:GITHUB_OUTPUT
+          "pnpm=$($d.pnpm)" >> $env:GITHUB_OUTPUT
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "${{ steps.deps.outputs.node }}"
+
+      - name: Install dsh into the Node dir (mirrors the local layout)
+        shell: pwsh
+        run: |
+          $nodeDir = Split-Path (Get-Command node).Source -Parent
+          npm config set prefix $nodeDir
+          npm install -g "@deepseek-ai/dsh@${{ steps.deps.outputs.dsh }}"
+          if (-not (Test-Path "$nodeDir\node_modules\@deepseek-ai\dsh\package.json")) {
+            throw "dsh did not land in the Node dir"
+          }
+
+      - name: Prepare profile + staging layout
+        shell: pwsh
+        run: ./tools/ci-prepare.ps1 -PnpmVersion "${{ steps.deps.outputs.pnpm }}"
+
+      - name: Assert all 3 plugins composed (fail fast on silent no-op)
+        shell: pwsh
+        run: |
+          $dump = (& dsh --profile web --dump-config 2>&1 | Out-String)
+          foreach ($p in @('dsh-whale-widget','open-sea-skin','dsh-whale-galgame')) {
+            if ($dump -notmatch [regex]::Escape($p)) { throw "plugin NOT composed: $p" }
+          }
+          Write-Host "OK - all 3 plugins composed"
+
+      - name: Build the portable folder + zip
+        shell: pwsh
+        run: ./build-package.ps1 -Src ./staging -Out ./out
+
+      - name: SHA256 checksums
+        shell: pwsh
+        run: |
+          $h = Get-FileHash ./out/DSH-Portable.zip -Algorithm SHA256
+          "$($h.Hash.ToLower())  DSH-Portable.zip" | Set-Content ./out/SHA256SUMS.txt -Encoding ASCII
+          Get-Content ./out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DSH-Portable
+          path: |
+            out/DSH-Portable.zip
+            out/SHA256SUMS.txt
+          retention-days: 14
+
+      - name: Create DRAFT release (tags only)
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          gh release create $tag ./out/DSH-Portable.zip ./out/SHA256SUMS.txt --draft --title "$tag" --generate-notes
+          Write-Host "DRAFT release $tag created - publish it manually."

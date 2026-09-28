@@ -25,6 +25,9 @@ if (-not $Src) {
 # 默认输出：当前用户「下载」目录（不硬编码任何用户名）
 if (-not $Out) { $Out = Join-Path ([Environment]::GetFolderPath('UserProfile')) 'Downloads\dsh-portable' }
 
+# 「包内容根」$PackRoot：本机开发布局是 <src>\pack；仓库布局下仓库根目录本身就是 pack 的内容
+$PackRoot = if (Test-Path (Join-Path $Src 'pack\launcher')) { Join-Path $Src 'pack' } else { $Src }
+
 $ErrorActionPreference = 'Stop'
 function Say($msg, $color = 'Cyan') { Write-Host $msg -ForegroundColor $color }
 function Step($n, $t) { Say ""; Say "=== [$n] $t ===" }
@@ -64,17 +67,17 @@ Step 3 '复制启动器、入口与说明文档'
 foreach ($d in @('launcher', 'bin', 'config', 'logs', 'data')) {
     New-Item -ItemType Directory -Path (Join-Path $Pkg $d) -Force | Out-Null
 }
-Copy-Item -Path "$Src\pack\launcher\*" -Destination (Join-Path $Pkg 'launcher') -Recurse -Force
-Copy-Item -Path "$Src\pack\entry\*" -Destination $Pkg -Force
-Copy-Item -Path "$Src\pack\bin\*" -Destination (Join-Path $Pkg 'bin') -Force
-Copy-Item -Path "$Src\pack\assets" -Destination $Pkg -Recurse -Force
-Copy-Item -Path "$Src\pack\README-使用说明.md" -Destination $Pkg -Force
-Copy-Item -Path "$Src\pack\使用说明.txt" -Destination $Pkg -Force
+Copy-Item -Path "$PackRoot\launcher\*" -Destination (Join-Path $Pkg 'launcher') -Recurse -Force
+Copy-Item -Path "$PackRoot\entry\*" -Destination $Pkg -Force
+Copy-Item -Path "$PackRoot\bin\*" -Destination (Join-Path $Pkg 'bin') -Force
+Copy-Item -Path "$PackRoot\assets" -Destination $Pkg -Recurse -Force
+Copy-Item -Path "$PackRoot\README-使用说明.md" -Destination $Pkg -Force
+Copy-Item -Path "$PackRoot\使用说明.txt" -Destination $Pkg -Force
 
 # 把「环境隔离验证」脚本也放进去，任何人可自行复验
 $toolDst = Join-Path $Pkg 'tools'
 New-Item -ItemType Directory -Path $toolDst -Force | Out-Null
-Copy-Item -Path "$Src\pack\tools\verify-isolation.ps1" -Destination $toolDst -Force -ErrorAction SilentlyContinue
+Copy-Item -Path "$PackRoot\tools\verify-isolation.ps1" -Destination $toolDst -Force -ErrorAction SilentlyContinue
 
 # ---------- [3b] 编译 exe 启动器（用系统自带 csc，免联网） ----------
 Step '3b' '编译 exe 启动器（DSH 便携版.exe）'
