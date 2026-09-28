@@ -1,8 +1,8 @@
 name: upstream-watch
 
 # dsh and its plugins move often. This checks the pins in deps.json against the
-# registries every Monday and records any drift as an issue, so the decision to
-# bump is deliberate instead of discovered by a user hitting a bug.
+# registries every Monday and records any drift as an issue, so bumping stays a
+# deliberate decision instead of a surprise discovered by a user.
 on:
   schedule:
     - cron: '17 3 * * 1'
@@ -19,41 +19,42 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Compare the pins against upstream
-        id: drift
-        shell: pwsh
-        continue-on-error: true
-        run: |
-          ./tools/check-upstream.ps1 | Tee-Object -FilePath ./drift.txt
-          $code = $LASTEXITCODE
-          "stale=$code" >> $env:GITHUB_OUTPUT
-          Write-Host "check-upstream exit=$code"
-
-      - name: Open or update the tracking issue
-        if: steps.drift.outputs.stale == '1'
+      # One step on purpose: the check writes its table to stdout, so there is no
+      # file to hand between steps (which silently went missing last time) and the
+      # script's non-zero exit cannot kill this shell - it runs as a child process.
+      - name: Check for upstream drift and record it
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          $out = & pwsh -NoProfile -Command "./tools/check-upstream.ps1" 2>&1 | Out-String
+          $code = $LASTEXITCODE
+          Write-Host $out
+          Write-Host "check-upstream exit=$code"
+          if ($code -eq 0) { Write-Host 'no drift - nothing to do'; exit 0 }
+
           $title = 'upstream drift: pinned dependencies are behind'
           $lines = @(
             'The weekly automated check found that something we pin has moved upstream.',
             '',
             '```',
-            (Get-Content -LiteralPath ./drift.txt -Raw),
+            $out.Trim(),
             '```',
             '',
-            'Bumping is a deliberate step: update `deps.json`, run `pnpm install` inside',
-            '`ci-profile/web` so `pnpm-lock.yaml` records the new versions, then push and',
-            'let the build workflow prove the bundle still passes its gates.'
+            'Bumping is a deliberate step: update `deps.json`, then run `pnpm install`',
+            'inside `ci-profile/web` so `pnpm-lock.yaml` records the new versions, then',
+            'push and let the build workflow prove the bundle still passes its gates.'
           )
           $body = $lines -join [Environment]::NewLine
-          $num = gh issue list --state open --search "$title in:title" --json number --jq '.[0].number'
-          if ($num) {
-            Write-Host "existing issue #$num - commenting"
-            gh issue comment $num --body $body
+
+          $raw = & gh issue list --state open --search "$title in:title" --json number
+          $found = @($raw | ConvertFrom-Json)
+          if ($found.Count -gt 0) {
+            Write-Host "existing issue #$($found[0].number) - commenting"
+            & gh issue comment $found[0].number --body $body
           } else {
             Write-Host 'no open issue - creating one'
-            gh issue create --title $title --body $body
+            & gh issue create --title $title --body $body
           }
           if ($LASTEXITCODE -ne 0) { throw "issue step failed ($LASTEXITCODE)" }
+          Write-Host 'done'
