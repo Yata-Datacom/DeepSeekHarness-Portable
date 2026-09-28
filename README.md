@@ -99,6 +99,39 @@ powershell -ExecutionPolicy Bypass -File build-package.ps1 `
 
 ---
 
+## 🔧 构建与发布 · Build & Release
+
+**全程自动，本机不需要打包。** 打一个 tag 就产出**草稿** Release，过目后手动 publish。
+Fully automated — pushing a tag produces a **draft** release for you to review.
+
+```text
+git tag v1.0.1 && git push --tags
+        |
+        v   GitHub Actions . windows-latest . .github/workflows/build.yml
+  1  读 deps.json               锁定 node / dsh / 每个插件的精确版本
+  2  装 dsh 到 node 目录          与本地打包布局完全一致
+  3  ci-prepare.ps1            铺 ~/.dsh + pnpm install --frozen-lockfile + staging 链接
+  4  断言 3 个插件已 composed     防"装了但没生效"的静默失效
+  5  build-package.ps1         产出 DSH-Portable\
+  6  verify-package.ps1        38 项完整性闸门（结构/插件/seed/隐私/零符号链接/无密钥）
+  7  tar + SHA256              产出 DSH-Portable.zip + SHA256SUMS.txt
+  8  上传 artifact（保留 14 天）
+  9  端到端隔离验证              真的启动/停止 Web 服务，证明包外环境零改动
+ 10  建**草稿** Release           你看过再手动 publish
+```
+
+**为什么可以信 · Why it is trustworthy**
+
+| | |
+| :-- | :-- |
+| 依赖可复现 | `ci-profile/web/pnpm-lock.yaml` 记录每个包的 `sha512` 完整性哈希，git 依赖连 commit 一起锁 |
+| 环境干净 | 构建跑在**全新机器**上，隔离验证的结论比在本机跑更有说服力 |
+| 顺序有讲究 | **先压缩、再跑端到端**：跑 dsh 会让包内自愈出符号链接，tar 会跟进导致体积翻倍 |
+| 不给假绿 | 任一步失败即停；成品还要过 38 项闸门才允许打包 |
+| 产物可核对 | Release 附 `SHA256SUMS.txt`，下载后可比对 |
+
+---
+
 ## 🧪 验证环境隔离 · Verify isolation
 
 ```powershell
@@ -106,6 +139,7 @@ powershell -ExecutionPolicy Bypass -File tools\verify-isolation.ps1 -Rounds 3
 ```
 
 给系统拍快照 → 反复启动/停止（CLI + Web 服务）→ 再拍快照 → 逐项对比。
+CI 每次构建都会自动跑一遍（`-Rounds 2`）——跑在干净机器上，结论更有说服力。
 输出 `✔ 通过：包外环境【零改动】` 表示没有改 `~/.dsh`、PATH、注册表，也没在文档目录留下文件。
 
 ---
