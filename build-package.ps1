@@ -71,6 +71,7 @@ Copy-Item -Path "$PackRoot\launcher\*" -Destination (Join-Path $Pkg 'launcher') 
 Copy-Item -Path "$PackRoot\entry\*" -Destination $Pkg -Force
 Copy-Item -Path "$PackRoot\bin\*" -Destination (Join-Path $Pkg 'bin') -Force
 Copy-Item -Path "$PackRoot\assets" -Destination $Pkg -Recurse -Force
+Copy-Item -Path "$PackRoot\src" -Destination $Pkg -Recurse -Force
 Copy-Item -Path "$PackRoot\README-使用说明.md" -Destination $Pkg -Force
 Copy-Item -Path "$PackRoot\使用说明.txt" -Destination $Pkg -Force
 
@@ -78,6 +79,7 @@ Copy-Item -Path "$PackRoot\使用说明.txt" -Destination $Pkg -Force
 $toolDst = Join-Path $Pkg 'tools'
 New-Item -ItemType Directory -Path $toolDst -Force | Out-Null
 Copy-Item -Path "$PackRoot\tools\verify-isolation.ps1" -Destination $toolDst -Force -ErrorAction SilentlyContinue
+Copy-Item -Path "$PackRoot\tools\core-bridge.ps1" -Destination $toolDst -Force -ErrorAction SilentlyContinue
 
 # ---------- [3b] 编译 exe 启动器（用系统自带 csc，免联网） ----------
 Step '3b' '编译 exe 启动器（DSH 便携版.exe）'
@@ -89,17 +91,27 @@ $csc = @(
 if (-not $csc) {
     Say '  未找到 csc.exe，跳过生成 exe（可改用 启动 DSH.vbs）' 'Yellow'
 } else {
-    $cs  = Join-Path $Pkg 'assets\launcher.cs'
+    # 优先编译移植后的 C# 界面（src\Launcher.cs）；缺源码时回退到小 stub（只负责调起
+    # PowerShell 启动器）。回退保证构建永不因缺文件而失败，而 VBS/CMD 入口始终可用。
+    $cs = Join-Path $Pkg 'src\Launcher.cs'
+    $withUi = $true
+    if (-not (Test-Path -LiteralPath $cs)) {
+        $cs = Join-Path $Pkg 'assets\launcher.cs'
+        $withUi = $false
+    }
     $ico = Join-Path $Pkg 'assets\dsh-whale.ico'
     $outExe = Join-Path $Pkg 'DSH 便携版.exe'
-    if (-not (Test-Path -LiteralPath $cs)) { throw '缺少 assets\launcher.cs' }
-    $cscArgs = @('/nologo', '/target:winexe', ('/out:' + $outExe), $cs)
+    if (-not (Test-Path -LiteralPath $cs)) { throw '缺少 src\Launcher.cs 与 assets\launcher.cs' }
+    $cscArgs = @('/nologo', '/target:winexe', ('/out:' + $outExe))
+    if ($withUi) { $cscArgs += '/r:System.Web.Extensions.dll' }
     if (Test-Path -LiteralPath $ico) { $cscArgs += ('/win32icon:' + $ico) }
+    $cscArgs += $cs
     & $csc $cscArgs | Out-Null
     if (-not (Test-Path -LiteralPath $outExe)) {
         Say '  exe 编译失败（其它功能不受影响，可改用 启动 DSH.vbs）' 'Yellow'
     } else {
-        Say ("  OK 已生成 DSH 便携版.exe（{0:N0} KB，图标已嵌入）" -f ((Get-Item $outExe).Length / 1KB)) 'Green'
+        $kind = if ($withUi) { 'C# 界面' } else { '回退 stub' }
+        Say ("  OK 已生成 DSH 便携版.exe（{0:N0} KB，{1}，图标已嵌入）" -f ((Get-Item $outExe).Length / 1KB), $kind) 'Green'
         Remove-Item -LiteralPath $cs -Force -ErrorAction SilentlyContinue
     }
 }
