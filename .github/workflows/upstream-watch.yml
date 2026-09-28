@@ -1,0 +1,59 @@
+name: upstream-watch
+
+# dsh and its plugins move often. This checks the pins in deps.json against the
+# registries every Monday and records any drift as an issue, so the decision to
+# bump is deliberate instead of discovered by a user hitting a bug.
+on:
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  watch:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Compare the pins against upstream
+        id: drift
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          ./tools/check-upstream.ps1 | Tee-Object -FilePath ./drift.txt
+          $code = $LASTEXITCODE
+          "stale=$code" >> $env:GITHUB_OUTPUT
+          Write-Host "check-upstream exit=$code"
+
+      - name: Open or update the tracking issue
+        if: steps.drift.outputs.stale == '1'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $title = 'upstream drift: pinned dependencies are behind'
+          $lines = @(
+            'The weekly automated check found that something we pin has moved upstream.',
+            '',
+            '```',
+            (Get-Content -LiteralPath ./drift.txt -Raw),
+            '```',
+            '',
+            'Bumping is a deliberate step: update `deps.json`, run `pnpm install` inside',
+            '`ci-profile/web` so `pnpm-lock.yaml` records the new versions, then push and',
+            'let the build workflow prove the bundle still passes its gates.'
+          )
+          $body = $lines -join [Environment]::NewLine
+          $num = gh issue list --state open --search "$title in:title" --json number --jq '.[0].number'
+          if ($num) {
+            Write-Host "existing issue #$num - commenting"
+            gh issue comment $num --body $body
+          } else {
+            Write-Host 'no open issue - creating one'
+            gh issue create --title $title --body $body
+          }
+          if ($LASTEXITCODE -ne 0) { throw "issue step failed ($LASTEXITCODE)" }
