@@ -1,2 +1,133 @@
-# DeepSeekHarness-Portable
-非官方 · DeepSeek Harness 绿色便携启动器（解压即用 / 不污染环境）| Unofficial portable launcher
+<div align="center">
+
+<img src="assets/dsh-whale.ico" width="96" alt="DSH Portable" />
+
+# DSH 便携版 · DSH Portable
+
+**非官方 · DeepSeek Harness 绿色便携启动器**<br/>
+<sub>**Unofficial** portable launcher for DeepSeek Harness — unzip, double-click, done.</sub>
+
+<a href="../../releases/latest"><img src="https://img.shields.io/github/v/release/Yata-Datacom/DeepSeekHarness-Portable?style=for-the-badge&color=5E81AC&label=Download" alt="release" /></a>
+<img src="https://img.shields.io/badge/Windows-10%201809%2B%20%2F%2011%20x64-81A1C1?style=for-the-badge&logo=windows11&logoColor=white" alt="windows" />
+<img src="https://img.shields.io/badge/PowerShell-5.1-5E81AC?style=for-the-badge&logo=powershell&logoColor=white" alt="powershell" />
+<img src="https://img.shields.io/badge/License-MIT-8FBCBB?style=for-the-badge" alt="MIT" />
+
+</div>
+
+> 解压 → 双击 → 就能用。**同学不需要碰命令行，不需要装 Node，不会弄坏原有环境。**
+> Unzip, double-click, done. No command line, no Node install, no changes to the host system.
+
+---
+
+## ⬇️ 下载 · Download
+
+到 **[Releases](../../releases/latest)** 下载 `DSH-Portable.zip`（约 **136 MB**，含完整 Node 运行时，离线可用）。
+
+Download `DSH-Portable.zip` (~136 MB, bundled Node runtime, works offline) from **Releases**.
+
+---
+
+## ✨ 特点 · Features
+
+| | 中文 | English |
+| :-- | :-- | :-- |
+| 🟢 | **绿色便携** — 整包解压即用，不动注册表、不改 PATH、不写 `~/.dsh` | **Truly portable** — no registry, no PATH changes, never touches `~/.dsh` |
+| 🔍 | **启动前环境预检** — 系统版本 / 端口占用 / 冲突检测，不满足会明确告诉你 | **Preflight check** — OS version, port conflicts, blockers reported up front |
+| 🛡️ | **冲突默认拒装** — 需要覆盖时必须三重确认 | **Never overwrites by default** — forced overwrite needs triple confirmation |
+| 🧹 | **干净卸载** — 一键移除包内所有痕迹 | **Clean uninstall** — removes every trace it created |
+| 🔑 | **密钥自填** — 包内绝不包含任何 API key；首次启动引导填写自己的 | **Bring your own key** — the package ships zero API keys |
+| 🧪 | **环境隔离可自证** — 内置 `tools\verify-isolation.ps1`，快照前后对比证明包外零改动 | **Provable isolation** — bundled snapshot-diff verifier proves nothing outside the folder changed |
+
+---
+
+## 🚀 快速开始 · Quick start
+
+```text
+1. 下载 DSH-Portable.zip
+2. 解压到一个【短路径】目录（推荐 D:\DSH\ ，别放桌面深层目录）
+3. 双击   DSH 便携版.exe
+4. 首次启动按提示填入自己的 DEEPSEEK_API_KEY
+```
+
+- **系统要求 / Requirements**：64 位 Windows 10 **1809 (Build 17763)** 或 Windows 11 以上
+- **端口 / Port**：默认 `3099`（可在启动器里改）
+- 没有密钥也可以启动，只会提示未配置 / Starts without a key too — it just warns.
+
+详细的图文说明见 **[README-使用说明.md](README-使用说明.md)**；包内另附 `使用说明.txt`。
+
+---
+
+## 🗂️ 仓库内容 · Repository layout
+
+| 路径 · Path | 说明 · What it is |
+| :-- | :-- |
+| `launcher/core.ps1` | 核心逻辑：环境自检、启动/停止、端口管理、干净卸载 |
+| `launcher/launcher.ps1` | WinForms 图形启动器（主界面） |
+| `assets/launcher.cs` | 启动器 `DSH 便携版.exe` 的 C# 源码（用系统自带 csc 编译） |
+| `assets/dsh-whale.ico` | 应用图标 |
+| `entry/` | 包内双击入口（`启动 DSH.vbs` / `start-dsh.cmd`） |
+| `bin/dsh.cmd` | 包内 CLI 入口（自带 `DSH_HOME` 重定向） |
+| `build-package.ps1` | 打包器：组装绿色目录 + 生成 zip + 密钥泄漏扫描 |
+| `tools/verify-isolation.ps1` | 环境隔离验证（快照 → 反复启停 → 对比，包外零改动才通过） |
+| `使用说明.txt` / `README-使用说明.md` | 发给使用者的说明文档 |
+
+> 打包产物（`DSH-Portable\`、`*.zip`）**不入库** —— 源码在仓库，成品在 Releases。这是 GitHub 的常规做法。
+> Build artifacts are not committed: source in the repo, binaries in Releases.
+
+---
+
+## 🛠️ 自己打包 · Build your own
+
+需要一份已安装好的 DeepSeek Harness 目录（含 `node\` 运行时）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File build-package.ps1 `
+    -Src "D:\path\to\DeepSeekHarness" `
+    -Out "D:\out"
+```
+
+不加 `-Src` 时会自动推断（开发布局 `<src>\pack\` 与仓库根目录都能识别）。产物：
+
+```text
+<Out>\DSH-Portable\       绿色便携目录（解压即用）
+<Out>\DSH-Portable.zip    分发给使用者的压缩包
+```
+
+打包过程**全程不写入任何密钥**，收尾会扫描整个包，发现本机真实 key 立即中止。
+
+---
+
+## 🧪 验证环境隔离 · Verify isolation
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\verify-isolation.ps1 -Rounds 3
+```
+
+给系统拍快照 → 反复启动/停止（CLI + Web 服务）→ 再拍快照 → 逐项对比。
+输出 `✔ 通过：包外环境【零改动】` 表示没有改 `~/.dsh`、PATH、注册表，也没在文档目录留下文件。
+
+---
+
+## ⚖️ 第三方组件 · Third-party
+
+| 组件 · Component | 许可 · License |
+| :-- | :-- |
+| [Node.js](https://nodejs.org/) v22 (bundled in the release zip) | MIT |
+| [`@deepseek-ai/dsh`](https://www.npmjs.com/package/@deepseek-ai/dsh) (bundled) | MIT © 2026 DeepSeek |
+| 插件 `dsh-whale-galgame` · `dsh-whale-widget` · `open-sea-skin` | 各自作者所有 |
+
+本仓库**只包含启动器与打包脚本**；发行包内的上述组件版权归各自作者。详见 [NOTICE.md](NOTICE.md)。
+
+---
+
+## ⚠️ 免责声明 · Disclaimer
+
+本项目为**非官方**的第三方便携封装，与 DeepSeek 无隶属或背书关系。请遵守 `@deepseek-ai/dsh` 及其服务的使用条款。
+
+This is an **unofficial** third-party portable wrapper, not affiliated with or endorsed by DeepSeek.
+
+---
+
+<div align="center">
+<sub>MIT License · © 2026 Yata-Datacom</sub>
+</div>

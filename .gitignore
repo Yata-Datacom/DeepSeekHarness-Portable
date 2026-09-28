@@ -1,0 +1,20 @@
+# ── 构建产物 · build artifacts（源码在仓库，成品在 Releases）──
+DSH-Portable/
+*.zip
+out/
+build*.log
+*.log
+
+# ── 临时文件 · temp ──
+*.tmp
+Thumbs.db
+desktop.ini
+.DS_Store
+__pycache__/
+
+# ── 敏感文件 · secrets（绝不入库）──
+.env
+.env.*
+*.key
+*.pem
+credentials*
