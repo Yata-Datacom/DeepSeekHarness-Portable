@@ -250,4 +250,14 @@ Say ("  大小: {0:N0} MB" -f ($sz / 1MB))
 $zip = Join-Path $Out 'DSH-Portable.zip'
 if (Test-Path -LiteralPath $zip) { Say ("  压缩包: {0}  ({1:N0} MB)" -f $zip, ((Get-Item $zip).Length / 1MB)) }
 Say ''
-Say '  分发前请再确认：config\api-key.txt 不存在（只有占位 txt）' 'Yellow'
+Say '  分发前请再确认：config\api-key.txt 不存在（只有占位 txt）'
+
+# ============================================================
+#  显式退出码
+#  必须放在最后：打包过程中 robocopy / tar 成功时返回码是 1（"复制了文件"），
+#  不是错误。GitHub Actions 会在 pwsh 步骤末尾自动追加 exit $LASTEXITCODE，
+#  若不显式清零，一次完全成功的打包会被判定为失败。
+#  真正的失败走上面的 throw（非 0 退出），不会被这行掩盖。
+# ============================================================
+exit 0
+ 'Yellow'

@@ -65,3 +65,7 @@ if (-not (Test-Path -LiteralPath $dshPkg)) {
 $v = (Get-Content -LiteralPath $dshPkg -Raw | ConvertFrom-Json).version
 Say "dsh $v found in the Node dir"
 Say 'READY'
+
+# Explicit exit code: pnpm/npm/robocopy can leave a non-zero $LASTEXITCODE even on
+# success, and GitHub Actions appends `exit $LASTEXITCODE` to every pwsh step.
+exit 0
