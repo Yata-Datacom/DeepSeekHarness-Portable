@@ -1,0 +1,21 @@
+{
+  "name": "dsh-profile-web",
+  "private": true,
+  "dependencies": {
+    "dsh-whale-galgame": "^0.4.1",
+    "dsh-whale-widget": "github:MeteorNOX/DeepSeek-Balance-Whale-Widget",
+    "open-sea-skin": "1.2.3"
+  },
+  "dsh": {
+    "profile": {
+      "bundles": [
+        "@deepseek-ai/dsh-base",
+        "@deepseek-ai/dsh-web-app",
+        "dsh-whale-widget",
+        "open-sea-skin",
+        "dsh-whale-galgame"
+      ],
+      "patchReload": "live"
+    }
+  }
+}

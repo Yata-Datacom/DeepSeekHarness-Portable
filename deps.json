@@ -1,0 +1,40 @@
+{
+  "_comment": "Build manifest - CI reads this to reproduce the portable bundle. Human-readable mirror of ci-profile/web/pnpm-lock.yaml (which is the machine truth).",
+  "node": "22.23.1",
+  "pnpm": "10",
+  "dsh": {
+    "name": "@deepseek-ai/dsh",
+    "version": "0.1.5-rc.3",
+    "license": "MIT"
+  },
+  "plugins": {
+    "web": [
+      {
+        "name": "dsh-whale-galgame",
+        "version": "0.4.1",
+        "source": "npm"
+      },
+      {
+        "name": "dsh-whale-widget",
+        "version": "0.3.11",
+        "source": "git",
+        "commit": "54654549450431a3bfca9986958fcae23826bba8",
+        "repo": "MeteorNOX/DeepSeek-Balance-Whale-Widget",
+        "note": "git-hosted; the commit sha is pinned in pnpm-lock.yaml so --frozen-lockfile needs no git ls-remote"
+      },
+      {
+        "name": "open-sea-skin",
+        "version": "1.2.3",
+        "source": "npm"
+      }
+    ]
+  },
+  "profile": {
+    "template": "web",
+    "configSource": "ci-profile/web"
+  },
+  "runtime": {
+    "os": "Windows 10 1809 (17763) or later",
+    "arch": "x64"
+  }
+}
