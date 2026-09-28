@@ -149,7 +149,7 @@ function Get-EnvCheck {
     if (Test-Path -LiteralPath (Join-Path $script:PrfDir 'package.json')) {
         $pk = Get-Content -LiteralPath (Join-Path $script:PrfDir 'package.json') -Raw
         $names = @()
-        foreach ($p in @('dsh-whale-widget', 'gal-view', 'open-sea-skin')) { if ($pk -match [regex]::Escape($p)) { $names += $p } }
+        foreach ($p in @('dsh-whale-galgame', 'dsh-whale-widget', 'open-sea-skin')) { if ($pk -match [regex]::Escape($p)) { $names += $p } }
         if ($names.Count -gt 0) { Add-Check '已装插件' 'ok' ($names -join ' + ') }
         else { Add-Check '已装插件' 'warn' '未检测到插件（不影响使用）' }
     } else { Add-Check '已装插件' 'warn' '插件目录缺失（不影响使用）' }
