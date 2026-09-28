@@ -25,6 +25,8 @@
 
 Download `DSH-Portable.zip` (~136 MB, bundled Node runtime, works offline) from **Releases**.
 
+**直链 · Direct link** — `https://github.com/Yata-Datacom/DeepSeekHarness-Portable/releases/latest/download/DSH-Portable.zip`
+
 ---
 
 ## ✨ 特点 · Features
