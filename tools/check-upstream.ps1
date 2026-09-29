@@ -75,5 +75,7 @@ if ($Json) {
     Write-Host ("stale: {0}   unreachable: {1}" -f $stale.Count, $unreachable.Count)
 }
 
-if ($stale.Count -gt 0) { exit 1 }
+# upstream being unreachable is NOT 'no drift': a weekly check that silently passes
+# whenever the registry is down would never notice real staleness.
+if ($stale.Count -gt 0 -or $unreachable.Count -gt 0) { exit 1 }
 exit 0
