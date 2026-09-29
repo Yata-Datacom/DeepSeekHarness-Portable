@@ -154,3 +154,22 @@ Q: 界面右下角那个摇来摇去的鲸鱼娘是什么？
 本包为个人自用打包。DeepSeek Harness 本体是 DeepSeek 官方开源项目：
 https://github.com/deepseek-ai/deepseek-harness  （MIT 协议）
 ----------------------------------------
+
+========================================
+  遇到问题？先看这两份文档（随包附带）
+========================================
+
+  docs\TROUBLESHOOTING.md
+      完整排错手册。exe 被 Smart App Control 拦下、端口 3080 被占用、
+      没填密钥、解压路径太长、浏览器看到旧界面…… 每条都按
+      「现象 - 原因 - 怎么做 - 怎么确认真的好了」写清楚。
+
+  docs\ARCHITECTURE.md
+      内部结构说明（含架构图）：启动流程、目录职责、环境隔离边界。
+
+  关于签名
+      包内 DSH 便携版.exe 用本项目自签证书签名。
+        * 不导入证书也完全能用 —— 走「启动 DSH.vbs」入口即可。
+        * 想让 Windows 少弹拦截提示：运行 trust-signing-cert.cmd
+          （只信任这一张证书到当前用户；随时可用
+            untrust-signing-cert.cmd 撤销，删得很干净）。
