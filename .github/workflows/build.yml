@@ -166,9 +166,27 @@ jobs:
             GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
             GPG_KEY_FINGERPRINT: ${{ secrets.GPG_KEY_FINGERPRINT }}
         run: |
-          $tar = Join-Path $env:SystemRoot 'System32\tar.exe'
-          & $tar -a -c -f ./out/DSH-Portable.zip -C ./out DSH-Portable
-          if ($LASTEXITCODE -ne 0) { throw "tar failed ($LASTEXITCODE)" }
+          $zipMaker = Join-Path $PWD 'tools/make-zip.ps1'
+          & $zipMaker -Source ./out/DSH-Portable -Zip ./out/DSH-Portable.zip
+          if ($LASTEXITCODE -ne 0) { throw "make-zip failed ($LASTEXITCODE)" }
+
+          # Gate: the archive must survive a round trip with its Chinese names intact.
+          # tar.exe (bsdtar) writes file names in the ANSI code page, which turned them into
+          # 'DSH ???.exe' / '?? DSH.vbs' on this runner - and no earlier step noticed, because
+          # every other gate runs against the *folder*, not the zip.
+          $probe = Join-Path $env:RUNNER_TEMP 'zipcheck'
+          Remove-Item -LiteralPath $probe -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive -LiteralPath ./out/DSH-Portable.zip -DestinationPath $probe -Force
+          foreach ($f in @('DSH 便携版.exe', '启动 DSH.vbs', '使用说明.txt', 'README-使用说明.md')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $probe ('DSH-Portable/' + $f)))) {
+              throw "zip round-trip lost a file name: $f"
+            }
+          }
+          if (Get-ChildItem -LiteralPath (Join-Path $probe 'DSH-Portable') -Recurse -Force | Where-Object { $_.Name -like '*?*' }) {
+            throw 'zip contains names with question marks - the archiver mangled non-ASCII names'
+          }
+          Remove-Item -LiteralPath $probe -Recurse -Force -ErrorAction SilentlyContinue
+          Write-Host 'zip round-trip OK - Chinese file names survive the archive'
           $h = Get-FileHash ./out/DSH-Portable.zip -Algorithm SHA256
           "$($h.Hash.ToLower())  DSH-Portable.zip" | Set-Content ./out/SHA256SUMS.txt -Encoding ASCII
           Get-Content ./out/SHA256SUMS.txt
