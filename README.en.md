@@ -63,7 +63,7 @@ The bundled `DSH 便携版.exe` is signed with a self-signed certificate. **You 
 ```
 
 - **Requirements**: 64-bit Windows 10 **1809 (Build 17763)** or later, Windows 11 included
-- **Port**: `3099` by default (changeable in the launcher)
+- **Port**: `3080` by default (it moves to the next free port if that one is taken)
 - Starts without a key too — it just warns that none is configured.
 
 The illustrated walkthrough is **[README-使用说明.md](README-使用说明.md)** (in Chinese); the package also ships `使用说明.txt`.
