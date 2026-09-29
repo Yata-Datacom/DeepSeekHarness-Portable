@@ -1,0 +1,42 @@
+# Stage 4 (P2): keep the pinned dependencies visible instead of silently stale.
+# The portable bundle is a frozen snapshot on purpose (deps.json + the lock
+# file), so Dependabot must never auto-bump it - it opens a PR and a human
+# decides, exactly like the weekly upstream-drift issue.
+version: 2
+
+updates:
+  # GitHub Actions used by the three workflows.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:17"
+      timezone: "UTC"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
+      - "ci"
+
+  # The pinned dsh profile: its own package.json + pnpm-lock.yaml. This is the
+  # file that decides which dsh version is baked into the bundle, so a bump here
+  # is a release decision, not housekeeping.
+  - package-ecosystem: "npm"
+    directory: "/ci-profile/web"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:17"
+      timezone: "UTC"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "deps"
+    labels:
+      - "dependencies"
+    # Do not let an RC bump reach the bundle without a human reading
+    # tools/check-upstream.ps1 output first.
+    ignore:
+      - dependency-name: "@deepseek-ai/dsh"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
