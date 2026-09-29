@@ -212,7 +212,9 @@ function Start-Now {
         $log = Join-Path $script:LogDir 'web.log'
         if (Test-Path -LiteralPath $log) { Remove-Item -LiteralPath $log -Force }
         Get-DshEnv
-        $dshArgs = @($script:DshBin, 'web', '--no-open', '--port', "$port")
+        # Start-Process 不给 -ArgumentList 的元素加引号：路径含空格时 node 会拿到被切断的
+        # 模块路径，服务起不来而界面只说"启动超时"。只给 exe 加引号。
+        $dshArgs = @('"' + $script:DshBin + '"', 'web', '--no-open', '--port', "$port")
         Start-Process -FilePath $script:NodeExe `
             -ArgumentList $dshArgs `
             -WindowStyle Hidden `
@@ -322,7 +324,7 @@ $btnKey.Add_Click({
     }
 })
 
-$btnData.Add_Click({ Start-Process explorer.exe $script:PkgRoot })
+$btnData.Add_Click({ Start-Process explorer.exe ('"' + $script:PkgRoot + '"') })
 
 $btnStop.Add_Click({
     if (Stop-DshServer $script:CurrentPort) { $status.Text = '服务已停止' }
