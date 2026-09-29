@@ -223,15 +223,25 @@ jobs:
 
       # ---------- signature gate ----------
       - name: Assert the launcher exe is signed
+        env:
+          SIGN_PFX_PASSWORD: ${{ secrets.SIGN_PFX_PASSWORD }}
         shell: pwsh
         run: |
           $exe = './out/DSH-Portable/DSH 便携版.exe'
           if (-not (Test-Path -LiteralPath $exe)) { Write-Host 'no exe in this build - nothing to check'; exit 0 }
           $s = Get-AuthenticodeSignature -LiteralPath $exe
-          Write-Host ("signature: {0} | {1}" -f $s.Status, $(if ($s.SignerCertificate) { $s.SignerCertificate.Subject } else { '(none)' }))
-          if (Test-Path (Join-Path $env:RUNNER_TEMP 'signing.pfx')) {
-            if ($s.Status -ne 'Valid') { throw "the exe is not validly signed ($($s.Status))" }
-            Write-Host 'OK - launcher exe is signed and valid'
+          $pfx = Join-Path $env:RUNNER_TEMP 'signing.pfx'
+          if (Test-Path -LiteralPath $pfx) {
+            # A self-signed cert has no chain on a machine that has not imported the .cer, so the
+            # status reads UnknownError even though the signature landed correctly. Judge it by
+            # 'who signed it', not by the chain status.
+            $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2(
+                $pfx, $env:SIGN_PFX_PASSWORD,
+                [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet)
+            if (-not $s.SignerCertificate -or $s.SignerCertificate.Thumbprint -ne $cert.Thumbprint) {
+              throw "the exe is not signed by the release certificate ($($s.Status))"
+            }
+            Write-Host ("OK - launcher exe signed by {0} (chain status {1}; importing the .cer makes it Valid)" -f $s.SignerCertificate.Subject, $s.Status)
           } else {
             Write-Host '::warning::no signing certificate in this run - the exe is unsigned'
           }
