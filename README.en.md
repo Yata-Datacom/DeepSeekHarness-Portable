@@ -16,6 +16,8 @@
 
 > Unzip, double-click, done. No command line, no Node install, no changes to the host system.
 
+> 🆘 **Stuck? Start with the [troubleshooting manual](docs/TROUBLESHOOTING.md)** - a blocked exe, port 3080 in use, a missing key, an over-long extraction path, a stale browser view: each one has a written answer. For how it works inside, see the **[architecture doc](docs/ARCHITECTURE.md)**.
+
 ---
 
 ## ⬇️ Download
@@ -23,6 +25,18 @@
 Download `DSH-Portable.zip` (~**136 MB**, bundled Node runtime, works offline) from **[Releases](../../releases/latest)**.
 
 **Direct link** — `https://github.com/Yata-Datacom/DeepSeekHarness-Portable/releases/latest/download/DSH-Portable.zip`
+
+### 🔐 Verify the download
+
+Every release ships `SHA256SUMS.txt` signed with this project's release key, so you can tell whether the archive really came from here:
+
+```sh
+gpg --import assets/certs/release-signing-pub.asc
+gpg --verify SHA256SUMS.txt.asc SHA256SUMS.txt
+# the signing fingerprint must be A03127AD6D1F8D1D03EAD4969CCC65C393DF8230
+```
+
+The bundled `DSH 便携版.exe` is signed with a self-signed certificate. **You do not need to trust it** - the `start DSH.vbs` entry works regardless. If you want fewer Windows app-control prompts, run `trust-signing-cert.cmd` inside the extracted folder (it trusts exactly that one certificate for your user only, and `untrust-signing-cert.cmd` undoes it).
 
 ---
 
