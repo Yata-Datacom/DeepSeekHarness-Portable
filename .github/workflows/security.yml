@@ -1,0 +1,82 @@
+name: security-scan
+
+# Stage 4 (P2): the two scanners from the plan, kept out of the build pipeline
+# so a scanner outage can never block a release. Runs on every push to main,
+# on pull requests, and weekly alongside the upstream watch.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "23 2 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------- PowerShell static analysis ----------
+  # Invoke-ScriptAnalyzer on every shipped script. Errors block; warnings are
+  # reported (with file/line annotations in the run summary) but do not fail
+  # the job - PS 5.1-compatible code legitimately trips style rules.
+  psscriptanalyzer:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
+          Import-Module PSScriptAnalyzer
+          Write-Host ("PSScriptAnalyzer {0} ready" -f (Get-Module PSScriptAnalyzer).Version)
+
+      - name: Analyse every shipped script
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem -Path . -Recurse -File -Include *.ps1, *.psm1 |
+                   Where-Object { $_.FullName -notmatch '[\\/]node_modules[\\/]' }
+          Write-Host ("scripts: {0}" -f $files.Count)
+          $found = @()
+          foreach ($f in $files) {
+            $found += @(Invoke-ScriptAnalyzer -Path $f.FullName -Severity Error, Warning)
+          }
+          $errors   = @($found | Where-Object { $_.Severity -eq 'Error' })
+          $warnings = @($found | Where-Object { $_.Severity -eq 'Warning' })
+          Write-Host ("findings: errors={0} warnings={1}" -f $errors.Count, $warnings.Count)
+
+          Write-Host ""
+          Write-Host "--- warnings (reported, not blocking) ---"
+          $warnings | Select-Object -First 60 ScriptName, Line, RuleName, Message | Format-Table -AutoSize |
+            Out-String -Width 200 | Write-Host
+
+          if ($errors.Count -gt 0) {
+            Write-Host ""
+            Write-Host "--- errors ---"
+            $errors | Select-Object ScriptName, Line, RuleName, Message | Format-Table -AutoSize |
+              Out-String -Width 200 | Write-Host
+            foreach ($e in $errors) {
+              Write-Host ("::error file={0},line={1}::{2} {3}" -f $e.ScriptName, $e.Line, $e.RuleName, $e.Message)
+            }
+            throw ("{0} PSScriptAnalyzer error(s)" -f $errors.Count)
+          }
+          Write-Host "OK - no PSScriptAnalyzer errors"
+
+  # ---------- secret scanning ----------
+  # Second opinion next to the leak scan the packager runs over its own output:
+  # that one only inspects the built bundle, this one inspects the whole history
+  # that a contributor could push. .gitleaks.toml allowlists the fake key the
+  # isolation test injects on purpose.
+  gitleaks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Scan the repository for committed secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
