@@ -17,7 +17,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       # One step on purpose: the check writes its table to stdout, so there is no
       # file to hand between steps (which silently went missing last time) and the
