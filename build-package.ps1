@@ -311,12 +311,14 @@ if (-not $NoZip) {
     else { Say '  链接检查通过（0 个符号链接）' 'Green' }
 
     $zip = Join-Path $Out 'DSH-Portable.zip'
-    if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }
-    $tar = Join-Path $env:SystemRoot 'System32\tar.exe'
-    if (Test-Path -LiteralPath $tar) {
-        & $tar -a -c -f $zip -C $Out 'DSH-Portable'
-        if ($LASTEXITCODE -ne 0) { throw "tar 打包失败，退出码 $LASTEXITCODE" }
+    # 用 .NET 打包：tar.exe（bsdtar）按 ANSI 代码页写文件名，中文名会变成问号。
+    # 见 tools\make-zip.ps1 开头的说明。
+    $zipMaker = Join-Path $PSScriptRoot 'tools\make-zip.ps1'
+    if (Test-Path -LiteralPath $zipMaker) {
+        & $zipMaker -Source $Pkg -Zip $zip
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $zip)) { throw "zip 打包失败，退出码 $LASTEXITCODE" }
     } else {
+        if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }
         Compress-Archive -Path $Pkg -DestinationPath $zip -CompressionLevel Optimal
     }
 }
