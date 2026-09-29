@@ -182,7 +182,8 @@ jobs:
               throw "zip round-trip lost a file name: $f"
             }
           }
-          if (Get-ChildItem -LiteralPath (Join-Path $probe 'DSH-Portable') -Recurse -Force | Where-Object { $_.Name -like '*?*' }) {
+          # (-match, not -like: in -like a bare ? is a wildcard and matches every name)
+          if (Get-ChildItem -LiteralPath (Join-Path $probe 'DSH-Portable') -Recurse -Force | Where-Object { $_.Name -match '\?' }) {
             throw 'zip contains names with question marks - the archiver mangled non-ASCII names'
           }
           Remove-Item -LiteralPath $probe -Recurse -Force -ErrorAction SilentlyContinue
