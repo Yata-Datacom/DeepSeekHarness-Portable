@@ -15,7 +15,10 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
 $targets = @()
-foreach ($pat in @('*.ps1', '*.psm1')) {
+# .cmd/.bat are read by cmd.exe, which cannot decode UTF-16 at all - they must be
+# pure ASCII. .vbs is read by WSH in the ANSI code page (a BOM-less UTF-8 .vbs with
+# Chinese in it fails to compile), so it may be ASCII or carry a UTF-16/UTF-8 BOM.
+foreach ($pat in @('*.ps1', '*.psm1', '*.vbs', '*.cmd', '*.bat')) {
     $targets += Get-ChildItem -Path $repoRoot -Recurse -Filter $pat -File -ErrorAction SilentlyContinue |
         Where-Object { $_.FullName -notmatch '\\node_modules\\|\\.git\\|\\out\\|\\staging\\' }
 }
@@ -23,8 +26,16 @@ foreach ($pat in @('*.ps1', '*.psm1')) {
 $bad = @()
 foreach ($f in $targets) {
     $bytes = [System.IO.File]::ReadAllBytes($f.FullName)
-    $hasBom = ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF)
-    if ($hasBom) { continue }
+    $ext = $f.Extension.ToLowerInvariant()
+    $hasUtf8Bom = ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF)
+    $hasUtf16Bom = ($bytes.Length -ge 2 -and (($bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE) -or ($bytes[0] -eq 0xFE -and $bytes[1] -eq 0xFF)))
+    if ($hasUtf8Bom) { continue }
+    if ($hasUtf16Bom) {
+        if ($ext -eq '.cmd' -or $ext -eq '.bat') {
+            $bad += ("{0}  (UTF-16 BOM, but cmd.exe cannot decode UTF-16 - keep .cmd/.bat pure ASCII)" -f $f.FullName.Substring($repoRoot.Length + 1))
+        }
+        continue
+    }
     $n = 0
     foreach ($b in $bytes) {
         if ($b -lt 0x20 -or $b -gt 0x7E) { if ($b -ne 0x0A -and $b -ne 0x0D -and $b -ne 0x09) { $n++ } }
