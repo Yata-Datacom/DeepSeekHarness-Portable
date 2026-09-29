@@ -12,7 +12,10 @@
 param(
     [string]$Src,
     [string]$Out,
-    [switch]$NoZip
+    [switch]$NoZip,
+    # 可选：用 PFX 给包内 exe 做 Authenticode 签名（CI 从 secret 传入；本机可省）
+    [string]$SignPfx,
+    [string]$SignPfxPassword
 )
 
 # 自动定位源码根，适配两种布局：
@@ -72,6 +75,12 @@ Copy-Item -Path "$PackRoot\entry\*" -Destination $Pkg -Force
 Copy-Item -Path "$PackRoot\bin\*" -Destination (Join-Path $Pkg 'bin') -Force
 Copy-Item -Path "$PackRoot\assets" -Destination $Pkg -Recurse -Force
 Copy-Item -Path "$PackRoot\src" -Destination $Pkg -Recurse -Force
+
+# 排错 + 架构文档：收件人遇到问题的第一站
+if (Test-Path -LiteralPath (Join-Path $PackRoot 'docs')) {
+    Copy-Item -Path "$PackRoot\docs" -Destination $Pkg -Recurse -Force
+    Say '  已随包附带 docs\（架构 + 排错）' 'Green'
+}
 Copy-Item -Path "$PackRoot\README-使用说明.md" -Destination $Pkg -Force
 Copy-Item -Path "$PackRoot\使用说明.txt" -Destination $Pkg -Force
 
@@ -113,6 +122,33 @@ if (-not $csc) {
         $kind = if ($withUi) { 'C# 界面' } else { '回退 stub' }
         Say ("  OK 已生成 DSH 便携版.exe（{0:N0} KB，{1}，图标已嵌入）" -f ((Get-Item $outExe).Length / 1KB), $kind) 'Green'
         Remove-Item -LiteralPath $cs -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# ---------- [3c] 可选：给包内 exe 做代码签名 ----------
+# CI 用仓库 secret 里的自签证书（PFX）签名；收件人导入配套 .cer 之后，
+# Smart App Control 就会放行这个 exe。本机不传 -SignPfx 时整段跳过。
+if ($SignPfx) {
+    Step '3c' '代码签名（Authenticode）'
+    $exes = @(Get-ChildItem -LiteralPath $Pkg -Filter '*.exe' -File -ErrorAction SilentlyContinue)
+    if ($exes.Count -eq 0) {
+        Say '  包内没有 exe，跳过签名' 'Yellow'
+    } else {
+        if (-not (Test-Path -LiteralPath $SignPfx)) { throw "找不到签名证书：$SignPfx" }
+        $cert = if ($SignPfxPassword) {
+            Get-PfxCertificate -FilePath $SignPfx -Password (ConvertTo-SecureString -String $SignPfxPassword -Force -AsPlainText)
+        } else {
+            Get-PfxCertificate -FilePath $SignPfx
+        }
+        Say ("  证书: {0}" -f $cert.Subject)
+        foreach ($e in $exes) {
+            $sig = Set-AuthenticodeSignature -FilePath $e.FullName -Certificate $cert -HashAlgorithm SHA256
+            if ($sig.Status -ne 'Valid') {
+                Say ("  签名未通过（{0}）：{1}" -f $e.Name, $sig.Status) 'Yellow'
+            } else {
+                Say ("  OK 已签名 {0}（{1:N0} KB）" -f $e.Name, ($e.Length / 1KB)) 'Green'
+            }
+        }
     }
 }
 
@@ -272,4 +308,3 @@ Say '  分发前请再确认：config\api-key.txt 不存在（只有占位 txt�
 #  真正的失败走上面的 throw（非 0 退出），不会被这行掩盖。
 # ============================================================
 exit 0
- 'Yellow'
