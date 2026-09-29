@@ -53,10 +53,23 @@ New-Item -ItemType Directory -Path $Pkg -Force | Out-Null
 
 # ---------- [2] Node 运行时 ----------
 Step 2 '复制 Node 运行时（剔除 TUI 插件 ~270MB）'
-$null = robocopy "$Src\node" "$Pkg\node" /E /NFL /NDL /NJH /NJS /NP `
+# 源目录可能是一个 junction（CI 的 staging\node 就是），而 robocopy
+# 不会跟进作为「源根」的 junction：它会一个文件都不复制，返回 16。
+# 先把 junction 解析成真实路径再复制；本机开发布局里它就是普通目录，解析是空操作。
+$srcNode = Join-Path $Src 'node'
+if (Test-Path -LiteralPath $srcNode) {
+    $it = Get-Item -LiteralPath $srcNode -Force
+    if ($it.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+        $srcNode = @($it.Target)[0]
+        Say ("  node 源是 reparse point，改用真实路径: {0}" -f $srcNode) 'DarkGray'
+    }
+}
+if (-not (Test-Path -LiteralPath $srcNode)) { throw "node 运行时目录不存在：$srcNode" }
+Say ("  robocopy '{0}' -> '{1}'" -f $srcNode, "$Pkg\node") 'DarkGray'
+$null = robocopy $srcNode "$Pkg\node" /E /NFL /NDL /NJH /NJS /NP `
     /XD '@deepseek-harness-tui' 'pnpm' `
     /XF 'dsh-tui' 'dsh-tui.cmd' 'dsh-tui.ps1' 'dst' 'dst.cmd' 'dst.ps1' 'pnx' 'pnx.cmd' 'pnx.ps1' 'pnpm' 'pnpm.cmd' 'pnpm.ps1'
-if ($LASTEXITCODE -ge 8) { throw "robocopy node 失败，退出码 $LASTEXITCODE" }
+if ($LASTEXITCODE -ge 8) { throw "robocopy node 失败，退出码 $LASTEXITCODE（源：$srcNode）" }
 
 # 清掉 node 根目录与 .bin 里的被剔除项（TUI / pnpm）
 foreach ($f in @('dsh-tui', 'dsh-tui.cmd', 'dsh-tui.ps1', 'dst', 'dst.cmd', 'dst.ps1', 'pnx', 'pnx.cmd', 'pnx.ps1', 'pnpm', 'pnpm.cmd', 'pnpm.ps1')) {
