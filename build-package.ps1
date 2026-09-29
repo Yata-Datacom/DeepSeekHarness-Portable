@@ -9,6 +9,11 @@
 #  安全：
 #    全程不写入任何密钥；构建后扫描整个包，发现本机 key 立即中止。
 # ============================================================
+# 静态检查：签名用的 PFX 密码只能以明文形式从 CI secret 传进来，PS 没有第二个入口。
+# 这里是有意为之，用带理由的定向抑制，而不是放宽整条规则或整个仓库的闸门。
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingConvertToSecureStringWithPlainText', '',
+    Justification = 'The PFX password arrives as a plaintext CI secret; PowerShell offers no other way to hand it to Get-PfxCertificate.')]
+[CmdletBinding()]
 param(
     [string]$Src,
     [string]$Out,
