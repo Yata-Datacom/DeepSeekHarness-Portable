@@ -122,9 +122,32 @@ jobs:
           Write-Host "OK - all 3 plugins composed"
 
       # ---------- build ----------
+      - name: Materialise the signing certificate from the repository secret
+        shell: pwsh
+        env:
+          PFX_B64: ${{ secrets.SIGN_PFX_BASE64 }}
+        run: |
+          if (-not $env:PFX_B64) {
+            Write-Host '::warning::SIGN_PFX_BASE64 is not set - this build ships an unsigned exe'
+            exit 0
+}
+          $p = Join-Path $env:RUNNER_TEMP 'signing.pfx'
+          [IO.File]::WriteAllBytes($p, [Convert]::FromBase64String($env:PFX_B64))
+          Write-Host ("PFX ready: {0} bytes" -f (Get-Item $p).Length)
+
       - name: Build the portable folder
         shell: pwsh
-        run: ./build-package.ps1 -Src ./staging -Out ./out -NoZip
+        env:
+          SIGN_PFX_PASSWORD: ${{ secrets.SIGN_PFX_PASSWORD }}
+        run: |
+          $a = @('-Src', './staging', '-Out', './out', '-NoZip')
+          $pfx = Join-Path $env:RUNNER_TEMP 'signing.pfx'
+          if ((Test-Path -LiteralPath $pfx) -and $env:SIGN_PFX_PASSWORD) {
+            $a += @('-SignPfx', $pfx, '-SignPfxPassword', $env:SIGN_PFX_PASSWORD)
+          } else {
+            Write-Host '::warning::signing secrets unavailable - building an unsigned package'
+}
+          ./build-package.ps1 @a
 
       - name: Verify the built package (integrity gates)
         shell: pwsh
@@ -134,8 +157,11 @@ jobs:
       # Running dsh self-heals data\.dsh\profiles\node_modules into symlinks and
       # tar follows them (the zip would jump ~145MB -> ~290MB). The build script
       # also strips them right before zipping; this ordering is the second guard.
-      - name: Zip + SHA256
+      - name: Zip + SHA256 (+ GPG signature)
         shell: pwsh
+        env:
+            GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+            GPG_KEY_FINGERPRINT: ${{ secrets.GPG_KEY_FINGERPRINT }}
         run: |
           $tar = Join-Path $env:SystemRoot 'System32\tar.exe'
           & $tar -a -c -f ./out/DSH-Portable.zip -C ./out DSH-Portable
@@ -145,12 +171,34 @@ jobs:
           Get-Content ./out/SHA256SUMS.txt
           Write-Host ("zip: {0:N1} MB" -f ((Get-Item ./out/DSH-Portable.zip).Length / 1MB))
 
+          # ---- GPG: sign the checksums so a download can be traced to this repo ----
+          $cand = @((Get-Command gpg -ErrorAction SilentlyContinue).Source)
+          $cand += Join-Path $env:ProgramFiles 'Git\usr\bin\gpg.exe'
+          $cand += Join-Path $env:ProgramFiles 'Git\mingw64\bin\gpg.exe'
+          $gpg = $cand | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
+          if ($gpg -and $env:GPG_PRIVATE_KEY) {
+            $env:GNUPGHOME = Join-Path $env:RUNNER_TEMP 'gnupg'
+            New-Item -ItemType Directory -Path $env:GNUPGHOME -Force | Out-Null
+            $keyFile = Join-Path $env:RUNNER_TEMP 'release-signing-key.asc'
+            Set-Content -LiteralPath $keyFile -Value $env:GPG_PRIVATE_KEY -Encoding ASCII
+            & $gpg --batch --import $keyFile 2>&1 | Write-Host
+            if ($LASTEXITCODE -ne 0) { throw "gpg import failed ($LASTEXITCODE)" }
+            & $gpg --batch --yes --armor --detach-sign --output ./out/SHA256SUMS.txt.asc ./out/SHA256SUMS.txt
+            if ($LASTEXITCODE -ne 0) { throw "gpg signing failed ($LASTEXITCODE)" }
+            & $gpg --verify ./out/SHA256SUMS.txt.asc ./out/SHA256SUMS.txt 2>&1 | Write-Host
+            if ($LASTEXITCODE -ne 0) { throw 'verifying our own signature failed' }
+            Write-Host "OK SHA256SUMS.txt.asc signed with $($env:GPG_KEY_FINGERPRINT)"
+          } else {
+            Write-Host '::warning::no GPG key available - SHA256SUMS.txt ships unsigned'
+          }
+
       - uses: actions/upload-artifact@v4
         with:
           name: DSH-Portable
           path: |
             out/DSH-Portable.zip
             out/SHA256SUMS.txt
+            out/SHA256SUMS.txt.asc
           retention-days: 14
 
       # ---------- end-to-end: really run the package on a clean machine ----------
@@ -166,6 +214,21 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "isolation verification FAILED (exit $LASTEXITCODE)" }
           Write-Host "isolation verification PASSED"
 
+      # ---------- signature gate ----------
+      - name: Assert the launcher exe is signed
+        shell: pwsh
+        run: |
+          $exe = './out/DSH-Portable/DSH 便携版.exe'
+          if (-not (Test-Path -LiteralPath $exe)) { Write-Host 'no exe in this build - nothing to check'; exit 0 }
+          $s = Get-AuthenticodeSignature -LiteralPath $exe
+          Write-Host ("signature: {0} | {1}" -f $s.Status, $(if ($s.SignerCertificate) { $s.SignerCertificate.Subject } else { '(none)' }))
+          if (Test-Path (Join-Path $env:RUNNER_TEMP 'signing.pfx')) {
+            if ($s.Status -ne 'Valid') { throw "the exe is not validly signed ($($s.Status))" }
+            Write-Host 'OK - launcher exe is signed and valid'
+          } else {
+            Write-Host '::warning::no signing certificate in this run - the exe is unsigned'
+          }
+
       # ---------- release ----------
       # Idempotent on purpose: re-running the same tag (a fix, a retry, a moved
       # tag) must refresh the draft instead of failing on "release already exists".
@@ -178,16 +241,19 @@ jobs:
           $tag  = "${{ github.ref_name }}"
           $zip  = './out/DSH-Portable.zip'
           $sums = './out/SHA256SUMS.txt'
+          $sig  = './out/SHA256SUMS.txt.asc'
+          $assets = @($zip, $sums)
+          if (Test-Path -LiteralPath $sig) { $assets += $sig }
           gh release view $tag 2>$null | Out-Null
           $exists = ($LASTEXITCODE -eq 0)
           if ($exists) {
             Write-Host "release $tag already exists - refreshing the draft"
             gh release edit $tag --draft --title "$tag"
             if ($LASTEXITCODE -ne 0) { throw "release edit failed ($LASTEXITCODE)" }
-            gh release upload $tag $zip $sums --clobber
+            gh release upload $tag @assets --clobber
             if ($LASTEXITCODE -ne 0) { throw "release upload failed ($LASTEXITCODE)" }
           } else {
-            gh release create $tag $zip $sums --draft --title "$tag" --generate-notes
+            gh release create $tag @assets --draft --title "$tag" --generate-notes
             if ($LASTEXITCODE -ne 0) { throw "release create failed ($LASTEXITCODE)" }
           }
           Write-Host "DRAFT release $tag ready - publish it manually."
