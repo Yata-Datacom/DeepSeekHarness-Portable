@@ -130,7 +130,7 @@ jobs:
           if (-not $env:PFX_B64) {
             Write-Host '::warning::SIGN_PFX_BASE64 is not set - this build ships an unsigned exe'
             exit 0
-}
+            }
           $p = Join-Path $env:RUNNER_TEMP 'signing.pfx'
           [IO.File]::WriteAllBytes($p, [Convert]::FromBase64String($env:PFX_B64))
           Write-Host ("PFX ready: {0} bytes" -f (Get-Item $p).Length)
@@ -146,7 +146,7 @@ jobs:
             $a += @('-SignPfx', $pfx, '-SignPfxPassword', $env:SIGN_PFX_PASSWORD)
           } else {
             Write-Host '::warning::signing secrets unavailable - building an unsigned package'
-}
+            }
           ./build-package.ps1 @a
 
       - name: Verify the built package (integrity gates)
