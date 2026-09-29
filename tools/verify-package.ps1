@@ -44,6 +44,19 @@ Check "node\node.exe"             (Has (Join-Path $Pkg 'node\node.exe'))
 Check "dsh module present"        (Has (Join-Path $Pkg 'node\node_modules\@deepseek-ai\dsh\package.json'))
 Check "bin\dsh.cmd"               (Has (Join-Path $Pkg 'bin\dsh.cmd'))
 
+# ---------- 2b) files the launcher hard-depends on ----------
+# The C# launcher hard-codes tools\core-bridge.ps1 and shows a dead-end dialog without it;
+# launcher.ps1 dot-sources launcher\core.ps1. Neither used to be checked, which is how a
+# package whose tools\ folder held only verify-isolation.ps1 passed all 38 gates.
+foreach ($f in @('launcher\core.ps1', 'launcher\launcher.ps1', 'tools\core-bridge.ps1',
+                 'docs\TROUBLESHOOTING.md', 'docs\ARCHITECTURE.md',
+                 'assets\certs\YataDatacom-Release-Signing.cer',
+                 'trust-signing-cert.cmd', 'untrust-signing-cert.cmd')) {
+    Check "need $f" (Has (Join-Path $Pkg $f))
+}
+Check "quick-start .txt present"  (@(Get-ChildItem -LiteralPath $Pkg -File -ErrorAction SilentlyContinue |
+                                     Where-Object { $_.Name -match '[^\x20-\x7E]\.txt$' }).Count -ge 1)
+
 # ---------- 3) the 3 plugins must be inside the packaged profile ----------
 $pm = Join-Path $Pkg 'data\.dsh\profiles\web\node_modules'
 foreach ($plugin in @('dsh-whale-widget', 'open-sea-skin', 'dsh-whale-galgame')) {
