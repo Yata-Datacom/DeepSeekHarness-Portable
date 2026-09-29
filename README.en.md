@@ -28,7 +28,7 @@ Download `DSH-Portable.zip` (~**136 MB**, bundled Node runtime, works offline) f
 
 ### 🔐 Verify the download
 
-Every release ships `SHA256SUMS.txt` signed with this project's release key, so you can tell whether the archive really came from here:
+Every release ships `SHA256SUMS.txt`; **from v1.2.0 on it also ships `SHA256SUMS.txt.asc`**, signed with this project's release key (older v1.1.0 has no signature - verify the SHA256 instead):
 
 ```sh
 gpg --import assets/certs/release-signing-pub.asc
