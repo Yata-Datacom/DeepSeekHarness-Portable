@@ -142,7 +142,6 @@ if (-not $csc) {
         Remove-Item -LiteralPath $cs -Force -ErrorAction SilentlyContinue
     }
 }
-
 # ---------- [3c] 可选：给包内 exe 做代码签名 ----------
 # CI 用仓库 secret 里的自签证书（PFX）签名；收件人导入配套 .cer 之后，
 # Smart App Control 就会放行这个 exe。本机不传 -SignPfx 时整段跳过。
@@ -153,21 +152,53 @@ if ($SignPfx) {
         Say '  包内没有 exe，跳过签名' 'Yellow'
     } else {
         if (-not (Test-Path -LiteralPath $SignPfx)) { throw "找不到签名证书：$SignPfx" }
-        # 用 X509Certificate2 直载 PFX：Windows PowerShell 5.1 的 Get-PfxCertificate 既没有
-        # -Password 参数，拿到的证书也不带私钥（在 pwsh 里则表现为 Set-AuthenticodeSignature
-        # 返回 UnknownError）。EphemeralKeySet 让私钥只活在内存里，不往用户的证书存储写东西。
-        $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2(
-            $SignPfx, $SignPfxPassword,
-            [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet)
-        if (-not $cert.HasPrivateKey) { throw "签名证书不带私钥（PFX 或密码不对）：$SignPfx" }
-        Say ("  证书: {0}" -f $cert.Subject)
-        foreach ($e in $exes) {
-            $sig = Set-AuthenticodeSignature -FilePath $e.FullName -Certificate $cert -HashAlgorithm SHA256
-            if ($sig.Status -ne 'Valid') {
-                throw ("签名未通过（{0}）：{1}" -f $e.Name, $sig.Status)
-            } else {
-                Say ("  OK 已签名 {0}（{1:N0} KB）" -f $e.Name, ($e.Length / 1KB)) 'Green'
+        # 两层兜底：
+        #  ① 本进程签名。用 X509Certificate2 + EphemeralKeySet 载入 PFX —— Windows
+        #     PowerShell 5.1 的 Get-PfxCertificate 没有 -Password 参数、拿到的证书也不带
+        #     私钥；EphemeralKeySet 还能保证私钥只在内存里，不写用户的证书存储。
+        #     先复制到临时 ASCII 路径再签，免得源文件被编译器/杀软占着。
+        #  ② pwsh 7（.NET Core）下第①层会返回 UnknownError，这时把文件交给
+        #     Windows PowerShell 5.1 的子进程签（.NET Framework 没这个毛病）。
+        #     密码通过环境变量传给子进程，不出现在命令行里。
+        $env:SIGN_PFX_PATH = (Resolve-Path -LiteralPath $SignPfx).Path
+        $env:SIGN_PFX_PASSWORD = $SignPfxPassword
+        $helper = Join-Path $PSScriptRoot 'tools\sign-file.ps1'
+        $tmpDir = Join-Path ([IO.Path]::GetTempPath()) ('dshsign_' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
+        New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
+        try {
+            foreach ($e in $exes) {
+                $stage = Join-Path $tmpDir ('payload' + $e.Extension)
+                Copy-Item -LiteralPath $e.FullName -Destination $stage -Force
+                $status = 'UnknownError'
+                try {
+                    $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2(
+                        $SignPfx, $SignPfxPassword,
+                        [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet)
+                    if (-not $cert.HasPrivateKey) { throw "证书不带私钥（PFX 或密码不对）：$SignPfx" }
+                    Say ("  证书: {0}" -f $cert.Subject)
+                    $status = (Set-AuthenticodeSignature -LiteralPath $stage -Certificate $cert -HashAlgorithm SHA256).Status
+                    if ($status -eq 'Valid') { Say ("  本进程签名 OK（PS {0}）" -f $PSVersionTable.PSVersion) 'DarkGray' }
+                } catch {
+                    Say ("  本进程签名异常：{0}" -f $_.Exception.Message) 'DarkGray'
+                }
+                if ($status -ne 'Valid' -and (Test-Path -LiteralPath $helper) -and
+                    (Get-Command powershell.exe -ErrorAction SilentlyContinue)) {
+                    Say ("  本进程签名结果 {0}，改用 Windows PowerShell 5.1 子进程重试" -f $status) 'Yellow'
+                    $null = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $helper -Path $stage
+                    if ($LASTEXITCODE -eq 0) {
+                        $status = (Get-AuthenticodeSignature -LiteralPath $stage).Status
+                    } else {
+                        Say ("  子进程签名失败（退出码 {0}）" -f $LASTEXITCODE) 'Yellow'
+                    }
+                }
+                if ($status -ne 'Valid') { throw ("签名未通过（{0}）：{1}" -f $e.Name, $status) }
+                Copy-Item -LiteralPath $stage -Destination $e.FullName -Force
+                Say ("  OK 已签名 {0}（{1:N0} KB）" -f $e.Name, ((Get-Item -LiteralPath $e.FullName).Length / 1KB)) 'Green'
             }
+        } finally {
+            Remove-Item -LiteralPath $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item Env:\SIGN_PFX_PASSWORD -ErrorAction SilentlyContinue
+            Remove-Item Env:\SIGN_PFX_PATH -ErrorAction SilentlyContinue
         }
     }
 }
