@@ -28,7 +28,7 @@
 
 ### 🔐 校验与签名
 
-每个 Release 都附 `SHA256SUMS.txt`，并由本项目的发布密钥签名（校验整包有没有被人动过）：
+每个 Release 都附 `SHA256SUMS.txt`；**v1.2.0 起同时附本项目的 GPG 签名 `SHA256SUMS.txt.asc`**（`v1.1.0` 及更早的旧包没有签名文件，直接核对 SHA256 即可）：
 
 ```sh
 gpg --import assets/certs/release-signing-pub.asc
