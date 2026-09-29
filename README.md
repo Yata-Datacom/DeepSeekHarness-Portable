@@ -16,6 +16,8 @@
 
 > 解压 → 双击 → 就能用。**同学不需要碰命令行，不需要装 Node，不会弄坏原有环境。**
 
+> 🆘 **出问题先看 [排错手册](docs/TROUBLESHOOTING.md)** —— exe 被系统拦下、端口占用、没填密钥、解压路径太长、浏览器看到旧界面，都有现成答案。想了解内部结构看 **[架构文档](docs/ARCHITECTURE.md)**。
+
 ---
 
 ## ⬇️ 下载
@@ -23,6 +25,18 @@
 到 **[Releases](../../releases/latest)** 下载 `DSH-Portable.zip`（约 **136 MB**，含完整 Node 运行时，离线可用）。
 
 **直链** — `https://github.com/Yata-Datacom/DeepSeekHarness-Portable/releases/latest/download/DSH-Portable.zip`
+
+### 🔐 校验与签名
+
+每个 Release 都附 `SHA256SUMS.txt`，并由本项目的发布密钥签名（校验整包有没有被人动过）：
+
+```sh
+gpg --import assets/certs/release-signing-pub.asc
+gpg --verify SHA256SUMS.txt.asc SHA256SUMS.txt
+# 签名指纹应为 A03127AD6D1F8D1D03EAD4969CCC65C393DF8230
+```
+
+包内 `DSH 便携版.exe` 用自签证书签名。**不导入证书也完全不影响使用**（走 `启动 DSH.vbs` 入口即可）；想让 Windows 少弹几次拦截提示，可以在包内运行 `trust-signing-cert.cmd`（只信任这一张证书到当前用户，随时可用 `untrust-signing-cert.cmd` 撤销）。
 
 ---
 
