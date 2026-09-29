@@ -140,14 +140,17 @@ jobs:
         env:
           SIGN_PFX_PASSWORD: ${{ secrets.SIGN_PFX_PASSWORD }}
         run: |
-          $a = @('-Src', './staging', '-Out', './out', '-NoZip')
+          # Named (hashtable) splatting on purpose: the script declares [CmdletBinding()],
+          # so a name/value pair cannot be smuggled through as bare positional strings.
+          $p = @{ Src = './staging'; Out = './out'; NoZip = $true }
           $pfx = Join-Path $env:RUNNER_TEMP 'signing.pfx'
           if ((Test-Path -LiteralPath $pfx) -and $env:SIGN_PFX_PASSWORD) {
-            $a += @('-SignPfx', $pfx, '-SignPfxPassword', $env:SIGN_PFX_PASSWORD)
+            $p.SignPfx = $pfx
+            $p.SignPfxPassword = $env:SIGN_PFX_PASSWORD
           } else {
             Write-Host '::warning::signing secrets unavailable - building an unsigned package'
-            }
-          ./build-package.ps1 @a
+          }
+          ./build-package.ps1 @p
 
       - name: Verify the built package (integrity gates)
         shell: pwsh
