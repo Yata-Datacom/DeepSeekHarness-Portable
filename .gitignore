@@ -18,3 +18,8 @@ __pycache__/
 *.key
 *.pem
 credentials*
+*.pfx
+*.p12
+gnupghome/
+*secret*.asc
+
