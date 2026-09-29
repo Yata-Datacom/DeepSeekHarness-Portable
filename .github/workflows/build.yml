@@ -180,7 +180,11 @@ jobs:
           $cand += Join-Path $env:ProgramFiles 'Git\mingw64\bin\gpg.exe'
           $gpg = $cand | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
           if ($gpg -and $env:GPG_PRIVATE_KEY) {
-            $env:GNUPGHOME = Join-Path $env:RUNNER_TEMP 'gnupg'
+            $gpgHome = Join-Path $env:RUNNER_TEMP 'gnupg'
+            New-Item -ItemType Directory -Path $gpgHome -Force | Out-Null
+            # runner 上的 gpg 是 MSYS 版：它把 GNUPGHOME 当 POSIX 路径读，
+            # 传 'D:\a\_temp\gnupg' 会拼成 '/d/a/.../D:\a\_temp\gnupg' 从而找不到 keyring。
+            $env:GNUPGHOME = '/' + $gpgHome.Substring(0,1).ToLower() + ($gpgHome.Substring(2) -replace '\\','/')
             New-Item -ItemType Directory -Path $env:GNUPGHOME -Force | Out-Null
             $keyFile = Join-Path $env:RUNNER_TEMP 'release-signing-key.asc'
             Set-Content -LiteralPath $keyFile -Value $env:GPG_PRIVATE_KEY -Encoding ASCII
