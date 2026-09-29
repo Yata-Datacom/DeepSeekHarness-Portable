@@ -131,7 +131,7 @@ function Get-EnvCheck {
     # 4 Node 运行时（同时验证 x64 架构是否真能执行）
     if (Test-Path -LiteralPath $script:NodeExe) {
         try {
-            $v = (& $script:NodeExe --version 2>&1 | Select-Object -First 1)
+            $v = (& $script:NodeExe --version 2>$null | Select-Object -First 1)
             if (('' + $v) -match '^v\d+\.') { Add-Check 'Node 运行时' 'ok' "自带 Node $v（免安装，不动系统）" }
             else { Add-Check 'Node 运行时' 'fail' ("node.exe 返回异常：" + $v) }
         } catch { Add-Check 'Node 运行时' 'fail' 'node.exe 无法运行：可能是 32 位系统 / 被杀毒隔离 / 解压不完整' }
@@ -140,7 +140,7 @@ function Get-EnvCheck {
     # 5 dsh 本体
     if (Test-Path -LiteralPath $script:DshBin) {
         try {
-            $vs = (& $script:NodeExe $script:DshBin --version 2>&1 | Select-Object -First 1)
+            $vs = (& $script:NodeExe $script:DshBin --version 2>$null | Select-Object -First 1)
             Add-Check 'DSH 本体' 'ok' "dsh $vs"
         } catch { Add-Check 'DSH 本体' 'fail' 'dsh 启动失败' }
     } else { Add-Check 'DSH 本体' 'fail' '缺少 dsh 安装文件' }
@@ -215,7 +215,7 @@ function Get-PreflightBlock {
     } else {
         $nodeOk = $false
         try {
-            $v = (& $script:NodeExe --version 2>&1 | Select-Object -First 1)
+            $v = (& $script:NodeExe --version 2>$null | Select-Object -First 1)
             if (('' + $v) -match '^v\d+\.') { $nodeOk = $true }
         } catch { }
         if (-not $nodeOk) {
@@ -236,6 +236,12 @@ function Get-PreflightBlock {
         $reasons += "● 本包目录不可写。`n  请解压到 D 盘、桌面等可写位置，不要放在 C:\Program Files 这类受保护目录。"
     }
 
+    # 包内最长相对路径 197 字符（构建时实测）。撞上 Windows 260 上限的典型症状是
+    # "解压看着成功、启动却报超时"，所以预检先拦住并给出可执行的建议。
+    if (($script:PkgRoot.Length + 1 + 197) -gt 255) {
+        $reasons += "● 解压位置太深（当前 $($script:PkgRoot.Length) 字符 + 包内最长 197 字符 > 255）。`n  请把整个 DSH-Portable 文件夹剪切到 D:\DSH 这类短路径再启动。"
+    }
+
     if ($reasons.Count -gt 0) { return ($reasons -join "`n`n") }
     return $null
 }
@@ -245,7 +251,7 @@ function Get-DshUrlFromLog([string]$LogPath) {
     if (-not (Test-Path -LiteralPath $LogPath)) { return $null }
     $t = Get-Content -LiteralPath $LogPath -Raw -ErrorAction SilentlyContinue
     if (-not $t) { return $null }
-    $m = [regex]::Match($t, 'http://127\.0\.0\.1:(\d+)/\?token=([A-Za-z0-9_\-]+)')
+    $m = [regex]::Match($t, '(?i)http://(?:127\.0\.0\.1|localhost):(\d+)/\?token=([^\s"''<>]+)')
     if ($m.Success) { return $m.Value }
     return $null
 }
@@ -257,7 +263,10 @@ function Start-DshServer([int]$Port = 3080, [int]$TimeoutSec = 120) {
     if (Test-Path -LiteralPath $log) { Remove-Item -LiteralPath $log -Force }
 
     Get-DshEnv
-    $dshArgs = @($script:DshBin, 'web', '--no-open', '--port', "$Port")
+    # Start-Process 会把 -ArgumentList 用空格拼成命令行、且不给元素加引号：包路径含空格时
+    # （"D:\我的 工具\DSH"）node 收到的是被切断的模块路径，服务永远起不来，用户只看到
+    # "启动超时"、日志尾部却是空的。只给 exe 这一个元素加引号即可，其余无空格。
+    $dshArgs = @('"' + $script:DshBin + '"', 'web', '--no-open', '--port', "$Port")
     Start-Process -FilePath $script:NodeExe -ArgumentList $dshArgs -WindowStyle Hidden `
         -RedirectStandardOutput $log `
         -RedirectStandardError (Join-Path $script:LogDir 'web.err.log') | Out-Null
@@ -274,8 +283,16 @@ function Start-DshServer([int]$Port = 3080, [int]$TimeoutSec = 120) {
             }
         }
     }
-    $tail = ''
-    if (Test-Path -LiteralPath $log) { $tail = (Get-Content -LiteralPath $log -Tail 12) -join "`n" }
+    # 两个日志都要看：node 起不来时原因写在 stderr（web.log 是空的），
+    # 而"服务起来了但没打印 token"时原因只在 stdout。
+    $parts = @()
+    foreach ($lp in @($log, (Join-Path $script:LogDir 'web.err.log'))) {
+        if (Test-Path -LiteralPath $lp) {
+            $t2 = (Get-Content -LiteralPath $lp -Tail 8 -ErrorAction SilentlyContinue) -join "`n"
+            if ($t2) { $parts += ("--- {0} ---`n{1}" -f (Split-Path $lp -Leaf), $t2) }
+        }
+    }
+    $tail = if ($parts.Count) { $parts -join "`n" } else { '（两个日志都是空的）' }
     throw "启动超时（${TimeoutSec}s）。日志尾部：`n$tail"
 }
 
@@ -492,7 +509,7 @@ Start-Sleep -Seconds 5
 try { [System.IO.Directory]::Delete(`$lp, `$true) } catch { cmd /c rd /s /q "$pkg" }
 "@
         Set-Content -LiteralPath $d -Value $body -Encoding UTF8
-        Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', $d) -WindowStyle Hidden | Out-Null
+        Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', ('"' + $d + '"')) -WindowStyle Hidden | Out-Null
         [void]$done.Add('整个文件夹（关闭启动器后自动删除）')
     }
     Initialize-Dirs
