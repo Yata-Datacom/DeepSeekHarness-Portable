@@ -153,16 +153,18 @@ if ($SignPfx) {
         Say '  包内没有 exe，跳过签名' 'Yellow'
     } else {
         if (-not (Test-Path -LiteralPath $SignPfx)) { throw "找不到签名证书：$SignPfx" }
-        $cert = if ($SignPfxPassword) {
-            Get-PfxCertificate -FilePath $SignPfx -Password (ConvertTo-SecureString -String $SignPfxPassword -Force -AsPlainText)
-        } else {
-            Get-PfxCertificate -FilePath $SignPfx
-        }
+        # 用 X509Certificate2 直载 PFX：Windows PowerShell 5.1 的 Get-PfxCertificate 既没有
+        # -Password 参数，拿到的证书也不带私钥（在 pwsh 里则表现为 Set-AuthenticodeSignature
+        # 返回 UnknownError）。EphemeralKeySet 让私钥只活在内存里，不往用户的证书存储写东西。
+        $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2(
+            $SignPfx, $SignPfxPassword,
+            [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet)
+        if (-not $cert.HasPrivateKey) { throw "签名证书不带私钥（PFX 或密码不对）：$SignPfx" }
         Say ("  证书: {0}" -f $cert.Subject)
         foreach ($e in $exes) {
             $sig = Set-AuthenticodeSignature -FilePath $e.FullName -Certificate $cert -HashAlgorithm SHA256
             if ($sig.Status -ne 'Valid') {
-                Say ("  签名未通过（{0}）：{1}" -f $e.Name, $sig.Status) 'Yellow'
+                throw ("签名未通过（{0}）：{1}" -f $e.Name, $sig.Status)
             } else {
                 Say ("  OK 已签名 {0}（{1:N0} KB）" -f $e.Name, ($e.Length / 1KB)) 'Green'
             }
