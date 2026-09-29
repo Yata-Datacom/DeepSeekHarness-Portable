@@ -63,7 +63,7 @@ jobs:
           "dsh=$($d.dsh.version)" >> $env:GITHUB_OUTPUT
           "pnpm=$($d.pnpm)"       >> $env:GITHUB_OUTPUT
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: "${{ steps.deps.outputs.node }}"
 
