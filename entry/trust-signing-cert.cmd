@@ -37,6 +37,7 @@ if not exist "%CER%" (
   exit /b 1
 )
 
+set "OK="
 set /p OK="Type YES to import the certificate: "
 if /i not "%OK%"=="YES" (
   echo Cancelled - nothing was changed.
