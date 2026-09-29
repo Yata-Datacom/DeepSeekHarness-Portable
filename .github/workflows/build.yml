@@ -209,7 +209,10 @@ jobs:
             Set-Content -LiteralPath $keyFile -Value $env:GPG_PRIVATE_KEY -Encoding ASCII
             & $gpg --batch --import $keyFile 2>&1 | Write-Host
             if ($LASTEXITCODE -ne 0) { throw "gpg import failed ($LASTEXITCODE)" }
-            & $gpg --batch --yes --armor --detach-sign --output ./out/SHA256SUMS.txt.asc ./out/SHA256SUMS.txt
+            Write-Host 'secret keys in this keyring:'
+            & $gpg --batch --list-secret-keys --with-colons | Select-String '^fpr:' | Write-Host
+            # 显式指定用哪把私钥：secret 里若有多把，之前签的是哪把不受控
+            & $gpg --batch --yes --armor --local-user $env:GPG_KEY_FINGERPRINT --detach-sign --output ./out/SHA256SUMS.txt.asc ./out/SHA256SUMS.txt
             if ($LASTEXITCODE -ne 0) { throw "gpg signing failed ($LASTEXITCODE)" }
             & $gpg --verify ./out/SHA256SUMS.txt.asc ./out/SHA256SUMS.txt 2>&1 | Write-Host
             if ($LASTEXITCODE -ne 0) { throw 'verifying our own signature failed' }
