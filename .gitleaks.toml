@@ -1,0 +1,19 @@
+# Stage 4 (P2) - secret scanning config.
+#
+# The only strings in this repo that look like API keys are the fake ones the
+# test suite and the isolation verifier inject on purpose, so that a real key
+# can never take part in a test run. Allowlist those files by path instead of
+# writing a regex for a value that is deliberately fake; anything else still
+# gets scanned normally.
+title = "DSH portable"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Fake keys the tests and the isolation verifier inject on purpose"
+paths = [
+  '''tests[\\/]core\.Tests\.ps1''',
+  '''tests[\\/]preflight\.Tests\.ps1''',
+  '''tools[\\/]verify-isolation\.ps1''',
+]
